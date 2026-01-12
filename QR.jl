@@ -1,3 +1,7 @@
+using LinearAlgebra
+
+# modified Gram Schmidt
+
 function mgs(A)
 
     m, n = size(A)
@@ -17,7 +21,7 @@ function mgs(A)
     return Q, R
 end
 
-using LinearAlgebra
+
 
 # random complex matrix
 A = rand(ComplexF64, 5, 5)
@@ -54,4 +58,55 @@ function mgs_inplace(A)
     return A, R
 end
 
-@time Q, R = mgs_inplace(A) 
+@time Q, R = mgs_inplace(A)
+
+
+# Householder
+
+function house(A)
+
+    m, n = size(A)
+    R = copy(A)
+    W = zeros(ComplexF64, m, n)
+
+    for k = 1:n
+        v = copy(R[k:m,k])
+        α = -v[1] / abs(v[1]) * norm(v)
+        if v[1] == 0
+            v[1] += norm(v)
+        else
+            v[1] += v[1]/abs(v[1]) * norm(v)
+end
+        v = v / norm(v)
+
+        R[k:m,k:n] = R[k:m,k:n] - 2v*v'*R[k:m,k:n]
+        W[k:m,k] = v
+    end
+
+    return W,R
+end
+
+function formQ(W)
+    m, n = size(W)
+    Q = Matrix{eltype(W)}(I, m, m)
+
+    for k = n:-1:1
+        wk = W[k:m, k]
+        Q[k:m, :] .-= 2 .* wk * (wk' * Q[k:m, :])
+    end
+
+    return Q
+end
+
+A = rand(ComplexF64, 5, 5)
+
+W, R = house(A)
+
+Q = formQ(W)
+
+println("Error in reconstruction: ", norm(Q*R - A))
+
+# Check if Q is orthonormal
+println("norm(Q'*Q - I): ", norm(Q'*Q - I(size(Q,2))))
+println("max deviation from orthonormality: ", maximum(abs.(Q'*Q - I(size(Q,2)))))
+
