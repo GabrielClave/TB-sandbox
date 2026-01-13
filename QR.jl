@@ -36,9 +36,9 @@ println("norm(Q'*Q - I): ", norm(Q'*Q - I(size(Q,2))))
 
 println("max deviation from orthonormality: ", maximum(abs.(Q'*Q - I(size(Q,2)))))
 
-A = rand(ComplexF64, 1_000, 1_000)
+# A = rand(ComplexF64, 1_000, 1_000)
 
-@time Q, R = mgs(A)  # copy if you want to preserve A
+# @time Q, R = mgs(A)  # copy if you want to preserve A
 
 function mgs_inplace(A)
 
@@ -110,3 +110,24 @@ println("Error in reconstruction: ", norm(Q*R - A))
 println("norm(Q'*Q - I): ", norm(Q'*Q - I(size(Q,2))))
 println("max deviation from orthonormality: ", maximum(abs.(Q'*Q - I(size(Q,2)))))
 
+
+# classical Gram Schmidt
+
+function clgs(A)
+    m, n = size(A)
+    Q = zeros(eltype(A), m, n)
+    R = zeros(eltype(A), n, n)
+
+    for j in 1:n
+        # Classical GS uses the ORIGINAL column
+        for i in 1:j-1
+            R[i, j] = dot(Q[:, i], A[:, j])
+        end
+
+        v = A[:, j] - Q[:, 1:j-1] * R[1:j-1, j]
+        R[j, j] = norm(v)
+        Q[:, j] = v / R[j, j]
+    end
+
+    return Q, R
+end
