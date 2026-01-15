@@ -71,12 +71,11 @@ function house(A)
 
     for k = 1:n
         v = copy(R[k:m,k])
-        α = -v[1] / abs(v[1]) * norm(v)
         if v[1] == 0
             v[1] += norm(v)
         else
             v[1] += v[1]/abs(v[1]) * norm(v)
-end
+        end
         v = v / norm(v)
 
         R[k:m,k:n] = R[k:m,k:n] - 2v*v'*R[k:m,k:n]
@@ -131,3 +130,13 @@ function clgs(A)
 
     return Q, R
 end
+
+A = rand(ComplexF64, 1000, 1000)
+
+Q, R = clgs(A)
+
+println("Error in reconstruction: ", norm(Q*R - A))
+
+# Check if Q is orthonormal
+println("norm(Q'*Q - I): ", norm(Q'*Q - I(size(Q,2))))
+println("max deviation from orthonormality: ", maximum(abs.(Q'*Q - I(size(Q,2)))))
