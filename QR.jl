@@ -5,7 +5,7 @@ using LinearAlgebra
 function mgs(A)
 
     m, n = size(A)
-    R = zeros(ComplexF64, n, n)
+    R = zeros(eltype(A), n, n)
     Q = copy(A)
 
     for i = 1:n-1
@@ -43,7 +43,7 @@ println("max deviation from orthonormality: ", maximum(abs.(Q'*Q - I(size(Q,2)))
 function mgs_inplace(A)
 
     m, n = size(A)
-    R = zeros(ComplexF64, n, n)
+    R = zeros(eltype(A), n, n)
 
     for i = 1:n-1
         R[i,i] = norm(A[:, i])
@@ -67,7 +67,7 @@ function house(A)
 
     m, n = size(A)
     R = copy(A)
-    W = zeros(ComplexF64, m, n)
+    W = zeros(eltype(A), m, n)
 
     for k = 1:n
         v = copy(R[k:m,k])
