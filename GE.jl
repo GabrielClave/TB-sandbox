@@ -1,6 +1,8 @@
 using LinearAlgebra
 using BenchmarkTools
 
+# standard GE, no pivot
+
 function ge_nopivot(A)
     m, n = size(A)
     L = Matrix{Float64}(I, m, n)
@@ -27,6 +29,7 @@ L, U = ge_nopivot(A)
 
 println("norm(LU - A): ", norm(L*U - A))
 
+# GE with partial (row) pivoting
 
 function ge_pivot(A)
     m, n = size(A)
@@ -68,7 +71,6 @@ L_comp, U_comp, P_comp = ge_pivot(A)
 residual_error  = norm(P_comp * A - L_comp * U_comp)
 
 println("Residual (||PA - LU||): ", residual_error)
-
 
 # 1. Setup
 m = 1000
