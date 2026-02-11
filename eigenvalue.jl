@@ -8,18 +8,16 @@ function hessemberg_householder(A)
         for k in 1:m-2
             x = copy(H[k+1:m,k]) # vector to reflect
             nx = norm(x)
-            if x[1] == 0
-                x[1] += nx
-            else
-                x[1] += x[1]/abs(x[1]) * nx
-            end
+
+            s = sign(x[1]) == 0 ? one(eltype(x)) : sign(x[1])
+            x[1] += s * nx
 
             v = x / norm(x) # reflexion vector
 
             H[k+1:m,k+1:m] .-= 2v*v'H[k+1:m,k+1:m] # left multiplication # beware of the order this will be expensive 
             H[1:m,k+1:m] .-= 2H[1:m,k+1:m]*v*v' # right multiplication
             
-            H[k+1,k] = -nx
+            H[k+1,k] = -s*nx
             H[k+2:m,k] .=0
 
         end
@@ -68,7 +66,7 @@ n = 5
 A_orig = randn(n, n)
 A = copy(A_orig)
 
-H = hessemberg_householder(A)
+H = hessemberg_householder(A_orig)
 H2 = hessenberg_reduction!(A)
 
 # similarity transformation should preserve eigenvalues
