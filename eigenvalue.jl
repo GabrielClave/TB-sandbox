@@ -126,4 +126,33 @@ issymmetric(T) #false !
 T ≈ T' # True !
 eigvals(A_orig) ≈ eigvals(T)
 
+function power_iteration(A, v; tol=1e-4, maxiter=100)
+    v = copy(v) 
+    normalize!(v)
+    
+    λ = zero(eltype(A))
+    
+    for k in 1:maxiter
+        v = A * v # power iteration
+        normalize!(v)
+        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+        
+        # Check convergence
+        if abs(λ_new - λ) < tol
+            println(k)
+            return v, λ_new
+        end        
+        λ = λ_new
+    end
+    println("hit max iterations")
+    return v, λ
+end
 
+n = 10
+X = randn(n, n)
+A = X + X'
+v = randn(n, 1)
+
+v, λ = power_iteration(A,v)
+
+eigvals(A)
