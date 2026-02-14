@@ -1,5 +1,6 @@
-# reduction to Hessemberg form
 using LinearAlgebra
+
+# reduction to Hessemberg form
 
 function hessemberg_householder(A)
         m = size(A,1)
@@ -126,7 +127,9 @@ issymmetric(T) #false !
 T ≈ T' # True !
 eigvals(A_orig) ≈ eigvals(T)
 
-function power_iteration(A, v; tol=1e-4, maxiter=100)
+# power and inverse iteration
+
+function power_iteration(A, v; tol=1e-4, maxiter=100) # absolute tolerance is fishy
     v = copy(v) 
     normalize!(v)
     
@@ -138,7 +141,8 @@ function power_iteration(A, v; tol=1e-4, maxiter=100)
         λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
         
         # Check convergence
-        if abs(λ_new - λ) < tol
+        residual = norm(A*v - λ_new*v) # more expensive
+        if residual < tol
             println(k)
             return v, λ_new
         end        
@@ -156,3 +160,76 @@ v = randn(n, 1)
 v, λ = power_iteration(A,v)
 
 eigvals(A)
+
+function inverse_iteration(A, v, μ ; tol=1e-4, maxiter=100)
+    v = copy(v) 
+    normalize!(v)
+    
+    λ = zero(eltype(A))
+
+    F = factorize(A - μ*I) # not to repeat it every loop
+    
+    for k in 1:maxiter
+        # solve (A - μI)w = v
+        v = F \ v
+        normalize!(v)
+        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+        
+        # Check convergence
+        residual = norm(A*v - λ_new*v)
+        if residual < tol
+            println(k)
+            return v, λ_new
+        end        
+        λ = λ_new
+    end
+    println("hit max iterations")
+    return v, λ
+end
+
+n = 50
+X = randn(n, n)
+A = X + X'
+v = randn(n, 1)
+
+v, λ = power_iteration(A,v) # 89 iterations
+v, λ = inverse_iteration(A,v,1) # 2 iterations from a garbage guess, but did not return the max λ
+
+eigvals(A)
+
+# Rayleigh quotient iteration
+
+function rqi(A, v; tol=1e-4, maxiter=100)
+    v = copy(v) 
+    normalize!(v)
+    
+    λ = dot(v, A, v)
+    
+    for k in 1:maxiter
+        # solve (A - μI)w = v
+        v = (A - λ*I) \ v
+        normalize!(v)
+        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+        
+        # Check convergence
+        residual = norm(A*v - λ_new*v)
+        if residual < tol
+            println("Converged in $k iterations")
+            return v, λ_new
+        end        
+        λ = λ_new
+    end
+    println("hit max iterations")
+    return v, λ
+end
+
+n = 10
+X = randn(n, n)
+A = X + X'
+v = randn(n, 1)
+
+v, λ = inverse_iteration(A,v,3, tol = 1e-12) # 80 iteration
+v, λ = rqi(A, v, tol = 1e-12) # 1 iteration !
+
+eigvals(A)
+
