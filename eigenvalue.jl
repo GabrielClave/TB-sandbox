@@ -233,3 +233,28 @@ v, λ = rqi(A, v, tol = 1e-12) # 1 iteration !
 
 eigvals(A)
 
+# Pure QR
+
+function qr_eigen(A; tol = 1e-6, maxiter = 500)
+    Ak = copy(A)
+
+    for k in 1:maxiter
+        F = qr(Ak) # QR factorisation of A
+        Ak = F.R * F.Q
+        if norm(tril(A, -1)) < tol # elements below the diagonal
+            println("Converged in $k iterations")
+            return diag(Ak)
+        end    
+    end
+    println("hit max iterations")
+    return diag(Ak)
+end
+
+n = 10
+X = randn(n, n)
+A = X + X'
+v = randn(n, 1)
+
+eigvals(A)
+eigenvalues = qr_eigen(A) # stopped at 500, but with excellent accuracy
+
