@@ -241,7 +241,7 @@ function qr_eigen(A; tol = 1e-6, maxiter = 500)
     for k in 1:maxiter
         F = qr(Ak) # QR factorisation of A
         Ak = F.R * F.Q
-        if norm(tril(A, -1)) < tol # elements below the diagonal
+        if norm(tril(Ak, -1)) < tol # elements below the diagonal
             println("Converged in $k iterations")
             return diag(Ak)
         end    
@@ -256,5 +256,91 @@ A = X + X'
 v = randn(n, 1)
 
 eigvals(A)
-eigenvalues = qr_eigen(A) # stopped at 500, but with excellent accuracy
+eigenvalues = qr_eigen(A) # stopped at 458, but with excellent accuracy
 
+function qr_shift_rqs(A; tol = 1e-6, maxiter = 500)
+    Ak = copy(A)
+    m = size(A,1)
+    
+    for k in 1:maxiter
+        μ = Ak[m,m] # rayleigh quotient shift: q*Aq = t(q)
+        F = qr(Ak - μ*I) # QR factorisation of A - μI
+        Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
+
+        if norm(tril(Ak, -1)) < tol # elements below the diagonal
+            println("Converged in $k iterations")
+            return diag(Ak)
+        end    
+    end
+    println("hit max iterations")
+    return diag(Ak)
+end
+
+eigenvalues = qr_shift_rqs(A) # either converged in #100 iterations, or get stuck
+
+function qr_shift_ws(A; tol = 1e-6, maxiter = 500)
+    Ak = copy(A)
+    n = size(A,1)
+    
+    for k in 1:maxiter
+        # Look at the bottom right 2x2: [a b; b c]
+        a = Ak[n-1, n-1]
+        b = Ak[n-1, n]
+        c = Ak[n, n]
+        
+        δ = (a - c) / 2
+        # Sign-preserving shift formula
+        μ = c - (sign(δ + eps()) * b^2) / (abs(δ) + sqrt(δ^2 + b^2))
+
+
+        F = qr(Ak - μ*I) # QR factorisation of A - μI
+        Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
+
+        if norm(tril(Ak, -1)) < tol # elements below the diagonal
+            println("Converged in $k iterations")
+            return diag(Ak)
+        end    
+    end
+    println("hit max iterations")
+    return diag(Ak)
+end
+
+function check_accuracy(my_ev, true_ev)
+    # Sort both by absolute magnitude to align them
+    mine_sorted = sort(my_ev, by=abs, rev=true)
+    true_sorted = sort(true_ev, by=abs, rev=true)
+    
+    error_norm = norm(mine_sorted - true_sorted)
+    max_error = maximum(abs.(mine_sorted - true_sorted))
+    
+    println("--- Accuracy Check ---")
+    println("Residual Norm: ", error_norm)
+    println("Max Absolute Error: ", max_error)
+end
+
+n = 10
+X = randn(n, n)
+A = X + X'
+v = randn(n, 1)
+
+ev_true = eigvals(A)
+eigenvalues = qr_eigen(A) # stopped at 458, but with excellent accuracy
+check_accuracy(eigenvalues, ev_true)
+eigenvalues = qr_shift_rqs(A)
+check_accuracy(eigenvalues, ev_true)
+eigenvalues = qr_shift_ws(A)
+check_accuracy(eigenvalues, ev_true)
+
+# in practise we apply tridiagonal_reduction!(A)
+# although the code does not account for it anyway
+
+tridiagonal_reduction!(A)
+
+ev_true ≈ eigvals(A)
+check_accuracy(eigvals(A), ev_true) # sanity check
+
+eigenvalues = qr_eigen(A) # 182
+eigenvalues = qr_shift_rqs(A) # 230
+eigenvalues = qr_shift_ws(A) # 206
+
+# we are not seeing great progress because we aren't doing deflation (we are super optimizing the conbergence on the "last" eigenvalue but that's about it) 
