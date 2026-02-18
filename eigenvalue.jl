@@ -343,4 +343,82 @@ eigenvalues = qr_eigen(A) # 182
 eigenvalues = qr_shift_rqs(A) # 230
 eigenvalues = qr_shift_ws(A) # 206
 
-# we are not seeing great progress because we aren't doing deflation (we are super optimizing the conbergence on the "last" eigenvalue but that's about it) 
+# we are not seeing great progress because we aren't doing deflation (we are super optimizing the convergence on the "last" eigenvalue but that's about it)
+# the idea is that once the last col as "converged", we stop caring about it and optimize the second last
+
+function qr_shifted_deflation(A; tol=1e-12, maxiter=20)
+    Ak = copy(A)
+    n = size(Ak, 1)
+    eigenvalues = zeros(eltype(A), n)
+    total_iterations = 0 # useless
+    
+    current_n = n #the size of the "active" top-left submatrix
+    
+    while current_n > 1
+        # Base case: 2x2 direct solve
+        if current_n == 2
+            a, b, c, d = Ak[1,1], Ak[1,2], Ak[2,1], Ak[2,2]
+            tr = a + d
+            det = a*d - b*c
+            gap = sqrt(tr^2 - 4det + 0im)
+            eigenvalues[1] = (tr + gap) / 2
+            eigenvalues[2] = (tr - gap) / 2
+            current_n = 0
+            break
+        end
+
+        iter = 0 # iteration are PER EIGENVALUE not global
+        while iter < maxiter
+            # Wilkinson Shift on the active bottom-right 2x2
+            m = current_n
+            a = Ak[m-1, m-1]
+            b = Ak[m-1, m]
+            c = Ak[m, m]
+            
+            δ = (a - c) / 2
+            μ = c - (sign(δ + eps()) * b^2) / (abs(δ) + sqrt(δ^2 + b^2))
+
+            # Shifted QR step on the ACTIVE submatrix only
+            active_block = @view Ak[1:m, 1:m]
+            F = qr(active_block - μ*I)
+            active_block .= F.R * F.Q + μ*I # Ak IS modified
+
+            # Check for deflation at the bottom of the active block
+            if abs(Ak[m, m-1]) < tol # O(1)
+                eigenvalues[m] = Ak[m, m]
+                current_n -= 1 # "Deflate": ignore the last row/col                
+                break 
+            end
+            
+            iter += 1
+            total_iterations += 1
+            if iter == maxiter
+                println("Reached maxiter for eigenvalue $m")
+                eigenvalues[m] = Ak[m, m]
+                current_n -= 1
+            end
+        end
+    end
+    
+    # If we shrunk down to a 1x1
+    if current_n == 1
+        eigenvalues[1] = Ak[1,1]
+    end
+    
+    println("Converged in $total_iterations iterations")
+    return eigenvalues
+end
+
+X = randn(50, 50)
+A = X + X'
+
+tridiagonal_reduction!(A)
+
+ev_true = eigvals(A)
+
+eigenvalues = qr_eigen(A) # max
+eigenvalues = qr_shift_rqs(A) # max
+eigenvalues = qr_shift_ws(A) # max
+eigenvalues = qr_shifted_deflation(A) #55 iteration # aprox one per row !
+
+check_accuracy(eigenvalues, ev_true)
