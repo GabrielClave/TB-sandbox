@@ -130,3 +130,85 @@ function jacobi_eigenvalues!(A; tol=1e-10, maxiter=100)
     end
     return diag(A)
 end
+
+X = randn(50, 50)
+A = X + X'
+
+ev_true = eigvals(A)
+
+eigenvalues = jacobi_eigenvalues!(A) # max
+check_accuracy(eigenvalues, ev_true)
+
+
+# Bisection
+# binary search for eigenvalues
+
+# A is real and symmetric
+
+# if A is tridiagonal, there is a recurrence to compute det(Ak-xI)
+# pk = (T[k,k] - x)*pk_1 - (T[k+1,k]^2)*pk_2
+# but this grows or shrink very quickly
+# so we keep the signs in mind q_k = (d_k - x) - e_{k-1}^2 / q_{k-1}
+
+function count_eigenvalues_less_than(d, e, x)
+    n = length(d)
+    count = 0
+    q = d[1] - x
+    
+    if q < 0
+        count += 1
+    end
+    
+    for k in 2:n
+        # Prevent division by zero if q is exactly 0
+        if q == 0
+            q = 1e-14 
+        end
+        
+        # The recurrence: q_k = (d_k - x) - e_{k-1}^2 / q_{k-1}
+        q = (d[k] - x) - (e[k-1]^2) / q
+        
+        if q < 0
+            count += 1
+        end
+    end
+    return count
+end
+
+# find the n-th eigenvalue of A, starting in [a,b] where there is an eigenvalue (eg Gerschgorin)
+function bissection_eigenvalue(d, e, a, b, n; tol=1e-10, maxiter=100)
+
+    for k in 1:maxiter
+        
+        midpoint = (a+b)/2
+
+        if (b-a) < tol
+            println("converged in $k iterations")
+            return(midpoint)
+        end
+
+        N = count_eigenvalues_less_than(d, e, midpoint) # number of eigenvalue less than midpoint
+
+        if N < n
+            a = midpoint # look to the right
+        else
+            b = midpoint # look to the left
+        end
+    end
+
+    println("did not converged in $maxiter iterations")
+    return(midpoint)
+
+end
+
+X = randn(10, 10)
+A = X + X'
+
+ev_true = eigvals(A)
+
+tridiagonal_reduction!(A)
+
+n = 5
+ev = bissection_eigenvalue(diag(A), diag(A,-1), -10, 10, n)
+
+println("relative error: ", abs((ev - ev_true[n])/ev_true[n]))
