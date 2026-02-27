@@ -66,13 +66,13 @@ function jacobi_eigenvalues(A; tol = 1e-6, maxiter = 100)
 end
 
 
-X = randn(50, 50)
-A = X + X'
+# X = randn(50, 50)
+# A = X + X'
 
-ev_true = eigvals(A)
+# ev_true = eigvals(A)
 
-eigenvalues = jacobi_eigenvalues(A) # max
-check_accuracy(eigenvalues, ev_true)
+# eigenvalues = jacobi_eigenvalues(A) # max
+# check_accuracy(eigenvalues, ev_true)
 
 function jacobi_eigenvalues!(A; tol=1e-10, maxiter=100)
     n = size(A, 1)
@@ -131,13 +131,13 @@ function jacobi_eigenvalues!(A; tol=1e-10, maxiter=100)
     return diag(A)
 end
 
-X = randn(50, 50)
-A = X + X'
+# X = randn(50, 50)
+# A = X + X'
 
-ev_true = eigvals(A)
+# ev_true = eigvals(A)
 
-eigenvalues = jacobi_eigenvalues!(A) # max
-check_accuracy(eigenvalues, ev_true)
+# eigenvalues = jacobi_eigenvalues!(A) # max
+# check_accuracy(eigenvalues, ev_true)
 
 
 # Bisection
@@ -201,14 +201,111 @@ function bissection_eigenvalue(d, e, a, b, n; tol=1e-10, maxiter=100)
 
 end
 
-X = randn(10, 10)
-A = X + X'
+# X = randn(10, 10)
+# A = X + X'
 
-ev_true = eigvals(A)
+# ev_true = eigvals(A)
 
-tridiagonal_reduction!(A)
+# tridiagonal_reduction!(A)
 
-n = 5
-ev = bissection_eigenvalue(diag(A), diag(A,-1), -10, 10, n)
+# n = 5
+# ev = bissection_eigenvalue(diag(A), diag(A,-1), -10, 10, n)
 
-println("relative error: ", abs((ev - ev_true[n])/ev_true[n]))
+# println("relative error: ", abs((ev - ev_true[n])/ev_true[n]))
+
+# Divide and conquer
+
+function recursive_dc_no_deflation(T)
+    n = size(T,1)
+
+    # direct solve
+    if n == 1
+        return ones(1, 1), [T[1, 1]]
+    elseif n == 2
+        sol = eigen(Matrix(T))
+        return sol.vectors, sol.values
+    end
+
+    # divide, conquer, combine
+
+    k = div(n,2)
+
+    β = T[k, k+1]
+    T1 = T[1:k, 1:k]
+    T1[k, k] -= β
+
+    T2 = T[k+1:n, k+1:n]
+    T2[1,1] -= β
+
+    Q1,D1 = recursive_dc_no_deflation(T1)
+    Q2,D2 = recursive_dc_no_deflation(T2)
+
+    D = vcat(D1, D2)
+
+    # z = [last row of Q1' ; first row of Q2']
+    z = vcat(Q1[end, :], Q2[1, :])
+
+    # solve the secular equation, find the zeros of f(λ)
+    new_eigenvalues = solve_secular(D, z, β)
+    
+    # Eigenvector for λ_j is proportional to (D - λ_j I)⁻¹ z
+    # Then rotate back by Q_total = [Q1 0; 0 Q2]
+    Q_combined = blockdiag(Q1, Q2)
+    new_vectors = zeros(n, n)
+    
+    for j in 1:n
+        λ = new_eigenvalues[j]
+        # v_hat = (D - λI)⁻¹ z
+        v = z ./ (D .- λ) # can divide by 0 ?
+        v /= norm(v) # Normalize
+        new_vectors[:, j] = Q_combined * v
+    end
+    
+    return new_vectors, new_eigenvalues
+end
+
+# find roots of the secular equation
+function solve_secular(D, z, β)
+    n = length(D)
+    roots = zeros(n)
+    sorted_idx = sortperm(D)
+    d_sorted = D[sorted_idx]
+    z_sorted = z[sorted_idx]
+    
+    for i in 1:n
+        # Define secular function f(λ)
+        f(λ) = 1 + β * sum((z_sorted.^2) ./ (d_sorted .- λ))
+        
+        # Determine search interval [a, b] for bisection
+        if i < n
+            a, b = d_sorted[i] + 1e-10, d_sorted[i+1] - 1e-10
+        else
+            a, b = d_sorted[n] + 1e-10, d_sorted[n] + abs(β)*norm(z)^2 
+        end
+        
+        # Simple bisection (Impractical)
+        roots[i] = simple_bisection(f, a, b)
+    end
+    return roots
+end
+
+function blockdiag(Q1, Q2)
+    n1, n2 = size(Q1, 1), size(Q2, 1)
+    Q = zeros(n1+n2, n1+n2)
+    Q[1:n1, 1:n1] = Q1
+    Q[n1+1:end, n1+1:end] = Q2
+    return Q
+end
+
+function simple_bisection(f, a, b; iters=50)
+    for _ in 1:iters
+        m = (a + b) / 2
+        f(a) * f(m) < 0 ? b = m : a = m
+    end
+    return (a + b) / 2
+end
+
+T = Matrix(SymTridiagonal([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
+Q, D = recursive_dc_no_deflation(T)# some "NAs" eigenvectors, egenvalues are correct
+println("Computed Eigenvalues: ", sort(D))
+println("Actual Eigenvalues:   ", sort(eigen(Matrix(T)).values))
