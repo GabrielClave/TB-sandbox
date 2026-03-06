@@ -215,6 +215,7 @@ end
 
 # Divide and conquer
 
+# dumb recursion
 function recursive_dc_no_deflation(T)
     n = size(T,1)
 
@@ -306,6 +307,6 @@ function simple_bisection(f, a, b; iters=50)
 end
 
 T = Matrix(SymTridiagonal([2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0], [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]))
-Q, D = recursive_dc_no_deflation(T)# some "NAs" eigenvectors, egenvalues are correct
+Q, D = recursive_dc_no_deflation(T )# some "NAs" eigenvectors, eigenvalues are correct
 println("Computed Eigenvalues: ", sort(D))
 println("Actual Eigenvalues:   ", sort(eigen(Matrix(T)).values))

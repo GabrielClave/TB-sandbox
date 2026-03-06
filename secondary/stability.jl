@@ -90,3 +90,19 @@ proportions = [
     mean(σmins .<= τ)
     for τ in thresholds
 ]
+
+A = [10 1 0; 1 2 1; 0 1 -5]
+
+# Get only the eigenvalues
+values = eigvals(A)
+
+# Get both eigenvalues and eigenvectors
+factors = eigen(A)
+values = factors.values
+vectors = factors.vectors
+
+A = [ 5 1 1
+    0 10 2
+    2 0 -2]
+
+values = eigvals(A)
