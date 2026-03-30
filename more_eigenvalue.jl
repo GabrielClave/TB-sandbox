@@ -176,7 +176,7 @@ function count_eigenvalues_less_than(d, e, x)
 end
 
 # find the n-th eigenvalue of A, starting in [a,b] where there is an eigenvalue (eg Gerschgorin)
-function bissection_eigenvalue(d, e, a, b, n; tol=1e-10, maxiter=100)
+function bisection_eigenvalue(d, e, a, b, n; tol=1e-10, maxiter=100)
 
     for k in 1:maxiter
         
@@ -209,7 +209,7 @@ end
 # tridiagonal_reduction!(A)
 
 # n = 5
-# ev = bissection_eigenvalue(diag(A), diag(A,-1), -10, 10, n)
+# ev = bisection_eigenvalue(diag(A), diag(A,-1), -10, 10, n)
 
 # println("relative error: ", abs((ev - ev_true[n])/ev_true[n]))
 

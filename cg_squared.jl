@@ -199,31 +199,6 @@ function cgs(
 
 end
 
-# less bad matrix
-m = 300
-A = randn(m, m)./sqrt(m) + 2I
-b = randn(m)
-
-x, n, res_raw = cgs(A,b) # 23 steps
-
-# perfect preconditioner
-M = lu(A) # M = A
-xp, np , res_perf = cgs(A, b, M)
-# Converged in 1 step (x = A-1b)
-
-# diagonal preconditioner
-M = Diagonal(A)
-xd, nd , res_diag = cgs(A, b, M) # 23 steps, did not help at all
-
-# plots
-p = plot(yaxis=:log, title="CGS Preconditioning Comparison", 
-         xlabel="Iteration", ylabel="||r||", legend=:bottomleft)
-
-plot!(p, 0:n, res_raw[1:n+1], label="No Precond", lw=2, color=:crimson)
-plot!(p, 0:np, res_perf[1:np+1], label="Full LU", lw=2, color=:green, ls=:dash)
-plot!(p, 0:nd, res_diag[1:nd+1], label="Diagonal", lw=2, color=:blue)
-hline!(p, [tol], label="Tol", color=:black, alpha=0.5)
-
 # generate some sparse matrix to try ILU
 function generate_example(N)
     n = N^2

@@ -94,7 +94,7 @@ beta_sub = zeros(max_k - 1)
 T_mat = SymTridiagonal(alpha, beta_sub)
 
 n = cg!(A, b, x, P, T_mat, maxiter=max_k)
-# 17 ietrations, excellent precision
+# 17 iterations, excellent precision
 
 # Check P
 println("Orthonormality (||P'P - I||): ", norm(view(P, :, 1:n)' * view(P, :, 1:n) - I))

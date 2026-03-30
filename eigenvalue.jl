@@ -2,29 +2,6 @@ using LinearAlgebra
 
 # reduction to Hessemberg form
 
-function hessemberg_householder(A)
-        m = size(A,1)
-        H = copy(float(A))
-
-        for k in 1:m-2
-            x = copy(H[k+1:m,k]) # vector to reflect
-            nx = norm(x)
-
-            s = sign(x[1]) == 0 ? one(eltype(x)) : sign(x[1])
-            x[1] += s * nx
-
-            v = x / norm(x) # reflexion vector
-
-            H[k+1:m,k+1:m] .-= 2v*v'H[k+1:m,k+1:m] # left multiplication # beware of the order this will be expensive 
-            H[1:m,k+1:m] .-= 2H[1:m,k+1:m]*v*v' # right multiplication
-            
-            H[k+1,k] = -s*nx
-            H[k+2:m,k] .=0
-
-        end
-    return(H)
-end
-
 function hessenberg_reduction!(A)
     m = size(A, 1)
     T = eltype(A)
@@ -67,11 +44,9 @@ n = 5
 A_orig = randn(n, n)
 A = copy(A_orig)
 
-H = hessemberg_householder(A_orig)
 H2 = hessenberg_reduction!(A)
 
 # similarity transformation should preserve eigenvalues
-eigvals(A_orig) ≈ eigvals(H)
 eigvals(A_orig) ≈ eigvals(H2)
 
 function tridiagonal_reduction!(A)
@@ -239,7 +214,7 @@ function qr_eigen(A; tol = 1e-6, maxiter = 500)
     Ak = copy(A)
 
     for k in 1:maxiter
-        F = qr(Ak) # QR factorisation of A
+        F = qr(Ak) # QR factorization of A
         Ak = F.R * F.Q
         if norm(tril(Ak, -1)) < tol # elements below the diagonal
             println("Converged in $k iterations")
@@ -264,7 +239,7 @@ function qr_shift_rqs(A; tol = 1e-6, maxiter = 500)
     
     for k in 1:maxiter
         μ = Ak[m,m] # rayleigh quotient shift: q*Aq = t(q)
-        F = qr(Ak - μ*I) # QR factorisation of A - μI
+        F = qr(Ak - μ*I) # QR factorization of A - μI
         Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
 
         if norm(tril(Ak, -1)) < tol # elements below the diagonal
@@ -293,7 +268,7 @@ function qr_shift_ws(A; tol = 1e-6, maxiter = 500)
         μ = c - (sign(δ + eps()) * b^2) / (abs(δ) + sqrt(δ^2 + b^2))
 
 
-        F = qr(Ak - μ*I) # QR factorisation of A - μI
+        F = qr(Ak - μ*I) # QR factorization of A - μI
         Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
 
         if norm(tril(Ak, -1)) < tol # elements below the diagonal
@@ -331,7 +306,7 @@ check_accuracy(eigenvalues, ev_true)
 eigenvalues = qr_shift_ws(A)
 check_accuracy(eigenvalues, ev_true)
 
-# in practise we apply tridiagonal_reduction!(A)
+# in practice we apply tridiagonal_reduction!(A)
 # although the code does not account for it anyway
 
 tridiagonal_reduction!(A)
@@ -419,6 +394,6 @@ ev_true = eigvals(A)
 eigenvalues = qr_eigen(A) # max
 eigenvalues = qr_shift_rqs(A) # max
 eigenvalues = qr_shift_ws(A) # max
-eigenvalues = qr_shifted_deflation(A) #55 iteration # aprox one per row !
+eigenvalues = qr_shifted_deflation(A) #55 iteration # approx one per row !
 
 check_accuracy(eigenvalues, ev_true)

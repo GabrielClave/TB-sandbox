@@ -53,7 +53,7 @@ function tridiagonal_biorthogonalization!(
             w_cur .-= beta[k-1]*view(W, :, k-1)
         end
 
-        if (norm(v_cur) < tol) || (norm(w_cur) < tol) # "lucky" breackdown
+        if (norm(v_cur) < tol) || (norm(w_cur) < tol) # "lucky" breakdown
             println("Found invariant subspace in $k steps.")
             return k
         end
@@ -64,8 +64,8 @@ function tridiagonal_biorthogonalization!(
         beta[k] = norm(v_cur) # keep V normalized
         gamma[k] = δ/beta[k] # enforce gamma[k]*beta[k] = δ
 
-        if abs(δ) < tol # serious breackdown
-            println("serious breackdown after $k steps.")
+        if abs(δ) < tol # serious breakdown
+            println("serious breakdown after $k steps.")
             return k
         end
 
@@ -142,7 +142,7 @@ function bcg(
         denom = dot(q, Ap) # qnApn
         
         if abs(denom) < tol
-            println("serious breackdown after $k steps. residual: $residual")
+            println("serious breakdown after $k steps. residual: $residual")
             return x, k
         end
         
@@ -162,7 +162,7 @@ function bcg(
         rho_cur = dot(s, r)
 
         if abs(rho_cur) < tol
-            println("inner product is zero at step $k, algortithm can't progress. residual: $residual")
+            println("inner product is zero at step $k, algorithm can't progress. residual: $residual")
             return x, k
         end
         
@@ -196,4 +196,4 @@ b = randn(m)
 x, n = bcg(A,b)
 # beta = 0 after around 10 steps
 # at that point dot(s, r) ≃ norm(r)²
-# because the tolerance is e-12, we stop at rnorm(r) ≃ e-6
+# because the tolerance is e-12, we stop at norm(r) ≃ e-6
