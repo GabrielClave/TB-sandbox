@@ -198,3 +198,10 @@ cython_debug/
 
 .vscode/
 *.png
+
+# work in progress / experimental code
+
+cassini.jl
+Chap9.jl
+stability.jl
+in_progress.jl
