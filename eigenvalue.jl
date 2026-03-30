@@ -1,10 +1,13 @@
 using LinearAlgebra
 
-# reduction to Hessemberg form
+# reduction to Hessenberg form
 
 function hessenberg_reduction!(A)
     m = size(A, 1)
     T = eltype(A)
+
+    v_buf = zeros(T, m)    # Householder vectors
+    work_v = zeros(T, m)   # row products (v_tl)
     
     for k in 1:m-2
         x = @view A[k+1:m, k] # this will modify A, but we don't care
@@ -14,24 +17,25 @@ function hessenberg_reduction!(A)
             # reflection vector v
             s = sign(x[1]) == 0 ? one(T) : sign(x[1])
             
-            # Create v in-place to avoid extra allocations
-            v = copy(x)
-            v[1] += s * nx
-            normalize!(v)
+            vk = @view v_buf[1:m-k]
+            vk .= x
+            vk[1] += s * nx
+            normalize!(vk)
             
             # Left multiplication: H = (I - 2vv')H
             # Apply to trailing submatrix [k+1:m, k+1:m]
             sub_trailing = @view A[k+1:m, k+1:m]
+            v_tl = @view work_v[1:m-k]
             # sub_trailing -= 2 * v * (v' * sub_trailing)
-            v_tl = v' * sub_trailing # Vector-Matrix: O(p^2) 
-            sub_trailing .-= 2 .* v * v_tl # Outer product update: O(p^2) (still allocates "tmp matrix" v * v_tl)
+            mul!(v_tl, sub_trailing', vk)
+            BLAS.ger!(-T(2.0), vk, v_tl, sub_trailing)
             
             # Right multiplication: H = H(I - 2vv')
             # Apply to ALL rows for columns [k+1:m]
             full_trailing = @view A[1:m, k+1:m]
             # full_trailing -= 2 * (full_trailing * v) * v'
-            tr_v = full_trailing * v
-            full_trailing .-= 2 .* tr_v * v'
+            mul!(v_tl, full_trailing, vk)
+            BLAS.ger!(-T(2.0), v_tl, vk, full_trailing)
             
             A[k+1, k] = -s * nx
             A[k+2:m, k] .= 0
@@ -52,36 +56,42 @@ eigvals(A_orig) ≈ eigvals(H2)
 function tridiagonal_reduction!(A)
     m = size(A, 1)
     T = eltype(A)
+
+    v_buf = zeros(T, m)      # Householder vector
+    y_buf = zeros(T, m)      # 2 * A * v
+    w_buf = zeros(T, m)      # y - (v'y)v
     
     for k in 1:m-2
-        x = @view A[k+1:m, k] # this will modify A, but we don't care
+        x = @view A[k+1:m, k] # this will modify A
         nx = norm(x)
         
         if nx != 0
             # reflection vector v
             s = sign(x[1]) == 0 ? one(T) : sign(x[1])
             
-            # Create v in-place to avoid extra allocations
-            v = copy(x)
-            v[1] += s * nx
-            normalize!(v)
+            vk = @view v_buf[1:m-k]
+            vk .= x
+            vk[1] += s * nx
+            normalize!(vk)
+
+            # Submatrix to update
+            sub = @view A[k+1:m, k+1:m]
+            yk = @view y_buf[1:m-k]
+            wk = @view w_buf[1:m-k]
+
+            # (I - 2vv')H(I - 2vv') ⟺ rank 2 update A - vw' - wv'
+
+            # y = 2 * A * v
+            BLAS.symv!('U', T(2.0), sub, vk, T(0.0), yk) 
+            # w = y - (v'y)v
+            wk .= yk .- dot(vk, yk) .* vk
+
+            BLAS.ger!(-one(T), vk, wk, sub) # we should write a loop
+            BLAS.ger!(-one(T), wk, vk, sub) # we're doing twice the work
             
-            # Left multiplication: H = (I - 2vv')H
-            # Apply to trailing submatrix [k+1:m, k+1:m]
-            sub_trailing = @view A[k+1:m, k+1:m] # we could use the symmetry to do half as many operations
-            # sub_trailing -= 2 * v * (v' * sub_trailing)
-            v_tl = v' * sub_trailing # Vector-Matrix: O(p^2) 
-            sub_trailing .-= 2 .* v * v_tl # Outer product update: O(p^2) (still allocates "tmp matrix" v * v_tl)
-            
-            # Right multiplication: H = H(I - 2vv')
-            # Now applied to trailing submatrix [k+1:m, k+1:m] 
-            optimized_trailing = @view A[k+1:m, k+1:m] # we could use the symmetry to do half as many operations
-            # optimized_trailing -= 2 * (optimized_trailing * v) * v'
-            tr_v = optimized_trailing * v
-            optimized_trailing .-= 2 .* tr_v * v'
-            
-            A[k+1, k] = -s * nx
-            A[k, k+1] = -s * nx # by symmetry
+            val = -s * nx
+            A[k+1, k] = val
+            A[k, k+1] = val # by symmetry
 
             A[k+2:m, k] .= 0
             A[k, k+2:m] .= 0 # rows are zeroed by symmetry
@@ -90,13 +100,13 @@ function tridiagonal_reduction!(A)
     return A
 end
 
-n = 6
+n = 200
 X = randn(n, n)
 A_orig = X + X'
 A = copy(A_orig)
 issymmetric(A)
 
-T = tridiagonal_reduction!(A)
+@time T = tridiagonal_reduction!(A)
 
 issymmetric(T) #false !
 T ≈ T' # True !
@@ -104,54 +114,76 @@ eigvals(A_orig) ≈ eigvals(T)
 
 # power and inverse iteration
 
-function power_iteration(A, v; tol=1e-4, maxiter=100) # absolute tolerance is fishy
-    v = copy(v) 
-    normalize!(v)
+function power_iteration(A, v; tol=1e-4, maxiter=100)
+    T = eltype(A)
+    m = size(A, 1)
     
-    λ = zero(eltype(A))
+    v = Vector{T}(vec(v)) # issues with randn
+    Av = zeros(T, m)
+    res_vec = zeros(T, m)
+    
+    normalize!(v)
+    λ = zero(T)
     
     for k in 1:maxiter
-        v = A * v # power iteration
-        normalize!(v)
-        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+
+        mul!(Av, A, v)
+        λ_new = dot(v, Av)  # Rayleigh quotient: v' * A * v (v normalized)
         
         # Check convergence
-        residual = norm(A*v - λ_new*v) # more expensive
-        if residual < tol
+        res_vec .= Av .- λ_new .* v
+        residual = norm(res_vec) # more expensive
+        if residual < tol * (abs(λ_new) + 1)
             println(k)
             return v, λ_new
-        end        
+        end
+
+        v .= Av ./ norm(Av)
         λ = λ_new
     end
     println("hit max iterations")
     return v, λ
 end
 
-n = 10
+n = 100
 X = randn(n, n)
 A = X + X'
+A[1,1] = 100
 v = randn(n, 1)
 
-v, λ = power_iteration(A,v)
+@time v, λ = power_iteration(A,v)
 
 eigvals(A)
 
 function inverse_iteration(A, v, μ ; tol=1e-4, maxiter=100)
-    v = copy(v) 
-    normalize!(v)
+    T = eltype(A)
+    m = size(A, 1)
     
-    λ = zero(eltype(A))
-
-    F = factorize(A - μ*I) # not to repeat it every loop
+    v = Vector{T}(vec(v)) # issues with randn
+    w = zeros(T, m)
+    v_prev = zeros(T, m)
+    
+    normalize!(v)
+    λ = zero(T)
+    F = factorize(A - μ*I) # once here
     
     for k in 1:maxiter
+        copyto!(v_prev, v)
+
         # solve (A - μI)w = v
-        v = F \ v
-        normalize!(v)
-        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+        ldiv!(w,F,v)
+        
+        # Update and Normalize
+        nw = norm(w)
+        v .= w ./ nw
+        
+        dot_product = dot(v, v_prev) # Rayleigh quotient: v' * A * v
+        λ_new = μ + dot_product / nw
         
         # Check convergence
-        residual = norm(A*v - λ_new*v)
+        w .= (v_prev .- dot_product .* v) ./ nw
+        residual = norm(w)
+
         if residual < tol
             println(k)
             return v, λ_new
@@ -165,10 +197,11 @@ end
 n = 50
 X = randn(n, n)
 A = X + X'
-v = randn(n, 1)
+v = randn(n)
+A[1,1] = 100
 
-v, λ = power_iteration(A,v) # 89 iterations
-v, λ = inverse_iteration(A,v,1) # 2 iterations from a garbage guess, but did not return the max λ
+v, λ = power_iteration(A,v) # 7 iterations
+v, λ = inverse_iteration(A,v,1) # 10 iterations from a garbage guess, but did not return the max λ
 
 eigvals(A)
 

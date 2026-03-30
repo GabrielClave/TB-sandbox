@@ -6,8 +6,8 @@ N = 10                     # number of grid points
 x = range(1, 2; length=N)    
 
 # we have Ac = b
-# c is 3 dimentional, the 3 coefficients of the decomposition in the basis exp, sin , Γ
-# A is "infinite dimentional" x 3 that we approximate by the finite range of points
+# c is 3 dimensional, the 3 coefficients of the decomposition in the basis exp, sin , Γ
+# A is "infinite dimensional" x 3 that we approximate by the finite range of points
 # in each line we have a.exp(xk) + b.sin(xk) + c.Γ(xk) more or less equal to 1/xk
 
 f = 1.0 ./ x
