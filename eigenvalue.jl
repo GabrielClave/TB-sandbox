@@ -271,16 +271,24 @@ eigvals(A)
 function qr_eigen(A; tol = 1e-6, maxiter = 500)
     Ak = copy(A)
     Bk = similar(Ak)
-    F = qr!(Ak) # QR factorization of A
-    mul!(Bk, F.R , F.Q)
+    m = size(A,1)
     
     for k in 1:maxiter
-        if norm(tril(Ak, -1)) < tol # elements below the diagonal
+        off_diag_norm = 0.0
+        for j in 1:m-1, i in j+1:m
+            off_diag_norm += abs2(Ak[i, j])
+        end
+        if sqrt(off_diag_norm) < tol  # elements below the diagonal
             println("Converged in $k iterations")
             return diag(Ak)
         end
-        F = qr!(Ak) # QR factorization of A
-        mul!(Bk, F.R , F.Q)
+        F = qr!(Ak) # QR factorization of A, generates allocations
+
+        for j in 1:m, i in 1:m
+            Bk[i, j] = i <= j ? Ak[i, j] : zero(eltype(A))
+        end
+
+        rmul!(Bk, F.Q) # mul!(Bk, F.R , F.Q) was generating allocations
         Ak .= Bk
     end
     println("hit max iterations")
@@ -315,9 +323,14 @@ function qr_shift_rqs!(A, Bk; tol = 1e-6, maxiter = 500)
         for i in 1:m
             A[i, i] -= μ
         end
-        F = qr!(A) # QR factorization of A - μI
-        mul!(Bk, F.R , F.Q)
-        A .= Bk 
+        F = qr!(A) # QR factorization of A - μI, generates allocations
+
+        for j in 1:m, i in 1:m
+            Bk[i, j] = i <= j ? A[i, j] : zero(eltype(A))
+        end
+        #Bk = R * Q
+        rmul!(Bk, F.Q) # mul!(Bk, F.R , F.Q) was generating allocations
+        A .= Bk
         for i in 1:m
             A[i, i] += μ
         end # we still have A = Q* A-1 Q
@@ -328,36 +341,55 @@ end
 
 Ak = copy(A)
 Bk = similar(Ak)
-eigenvalues = qr_shift_rqs!(Ak, Bk) # either converged in #100 iterations, or get stuck
+eigenvalues = qr_shift_rqs!(Ak, Bk) # only good at finding the biggest ev
 Ak = copy(A)
 Bk = similar(Ak)
 @time qr_shift_rqs!(Ak, Bk)
 
-function qr_shift_ws(A; tol = 1e-6, maxiter = 500)
-    Ak = copy(A)
-    n = size(A,1)
+function qr_shift_ws!(A, Bk; tol = 1e-6, maxiter = 500)
+    n = size(A, 1)
+    T = eltype(A)
+    tol_sq = tol^2
     
     for k in 1:maxiter
+
+        off_diag_norm = zero(T)
+        for j in 1:n-1, i in j+1:n
+            off_diag_norm += abs2(A[i, j])
+        end
+
+        if off_diag_norm < tol_sq
+            println("Converged in $k iterations")
+            return diag(A)
+        end
+
         # Look at the bottom right 2x2: [a b; b c]
-        a = Ak[n-1, n-1]
-        b = Ak[n-1, n]
-        c = Ak[n, n]
+        a = A[n-1, n-1]
+        b = A[n-1, n]
+        c = A[n, n]
         
         δ = (a - c) / 2
         # Sign-preserving shift formula
         μ = c - (sign(δ + eps()) * b^2) / (abs(δ) + sqrt(δ^2 + b^2))
 
+        for i in 1:n
+            A[i, i] -= μ
+        end
+        F = qr!(A) # QR factorization of A - μI, generates allocations
 
-        F = qr(Ak - μ*I) # QR factorization of A - μI
-        Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
+        for j in 1:n, i in 1:n
+            Bk[i, j] = i <= j ? A[i, j] : zero(T)
+        end
+        # Bk = R * Q
+        rmul!(Bk, F.Q) # mul!(Bk, F.R , F.Q) was generating allocations
 
-        if norm(tril(Ak, -1)) < tol # elements below the diagonal
-            println("Converged in $k iterations")
-            return diag(Ak)
-        end    
+        A .= Bk
+        for i in 1:n
+            A[i, i] += μ
+        end
     end
     println("hit max iterations")
-    return diag(Ak)
+    return diag(A)
 end
 
 function check_accuracy(my_ev, true_ev)
@@ -379,35 +411,34 @@ A = X + X'
 v = randn(n, 1)
 
 ev_true = eigvals(A)
-eigenvalues = qr_eigen(A) # stopped at 458, but with excellent accuracy
+eigenvalues = qr_eigen(A)
 check_accuracy(eigenvalues, ev_true)
-eigenvalues = qr_shift_rqs(A)
+
+Ak = copy(A)
+Bk = similar(Ak)
+eigenvalues = qr_shift_rqs!(Ak, Bk)
 check_accuracy(eigenvalues, ev_true)
-eigenvalues = qr_shift_ws(A)
+
+Ak = copy(A)
+Bk = similar(Ak)
+eigenvalues = qr_shift_ws!(Ak, Bk)
 check_accuracy(eigenvalues, ev_true)
 
 # in practice we apply tridiagonal_reduction!(A)
 # although the code does not account for it anyway
 
-tridiagonal_reduction!(A)
-
-ev_true ≈ eigvals(A)
-check_accuracy(eigvals(A), ev_true) # sanity check
-
-eigenvalues = qr_eigen(A) # 182
-eigenvalues = qr_shift_rqs(A) # 230
-eigenvalues = qr_shift_ws(A) # 206
-
 # we are not seeing great progress because we aren't doing deflation (we are super optimizing the convergence on the "last" eigenvalue but that's about it)
 # the idea is that once the last col as "converged", we stop caring about it and optimize the second last
 
 function qr_shifted_deflation(A; tol=1e-12, maxiter=20)
-    Ak = copy(A)
+    Ak = copy(A) # Work on a copy to preserve input
     n = size(Ak, 1)
-    eigenvalues = zeros(eltype(A), n)
+    T = eltype(A)
+    Bk = similar(Ak) # Pre-allocated workspace buffer for R*Q
+    eigenvalues = zeros(T, n)
     total_iterations = 0 # useless
     
-    current_n = n #the size of the "active" top-left submatrix
+    current_n = n # The size of the "active" top-left submatrix
     
     while current_n > 1
         # Base case: 2x2 direct solve
@@ -433,13 +464,30 @@ function qr_shifted_deflation(A; tol=1e-12, maxiter=20)
             δ = (a - c) / 2
             μ = c - (sign(δ + eps()) * b^2) / (abs(δ) + sqrt(δ^2 + b^2))
 
+            active = @view Ak[1:m, 1:m]
+            buffer = @view Bk[1:m, 1:m]
+
             # Shifted QR step on the ACTIVE submatrix only
-            active_block = @view Ak[1:m, 1:m]
-            F = qr(active_block - μ*I)
-            active_block .= F.R * F.Q + μ*I # Ak IS modified
+            for i in 1:m
+                active[i, i] -= μ
+            end
+            F = qr!(active)
+
+            for j in 1:m, i in 1:m
+                buffer[i, j] = i <= j ? active[i, j] : zero(T)
+            end
+
+            # active_block = F.R * F.Q + μ*I
+
+            rmul!(buffer, F.Q) # F.R * F.Q
+
+            active .= buffer
+            for i in 1:m
+                active[i, i] += μ
+            end
 
             # Check for deflation at the bottom of the active block
-            if abs(Ak[m, m-1]) < tol # O(1)
+            if abs(Ak[m, m-1]) < tol
                 eigenvalues[m] = Ak[m, m]
                 current_n -= 1 # "Deflate": ignore the last row/col                
                 break 
@@ -464,16 +512,25 @@ function qr_shifted_deflation(A; tol=1e-12, maxiter=20)
     return eigenvalues
 end
 
-X = randn(50, 50)
+n = 100
+X = randn(n, n)
 A = X + X'
-
-tridiagonal_reduction!(A)
+v = randn(n, 1)
 
 ev_true = eigvals(A)
 
-eigenvalues = qr_eigen(A) # max
-eigenvalues = qr_shift_rqs(A) # max
-eigenvalues = qr_shift_ws(A) # max
-eigenvalues = qr_shifted_deflation(A) #55 iteration # approx one per row !
+eigenvalues = qr_eigen(A) # too many iter
+check_accuracy(eigenvalues, ev_true) # bad
 
-check_accuracy(eigenvalues, ev_true)
+Ak = copy(A)
+Bk = similar(Ak)
+eigenvalues = qr_shift_rqs!(Ak, Bk) # too many iter
+check_accuracy(eigenvalues, ev_true) # bad
+
+Ak = copy(A)
+Bk = similar(Ak)
+eigenvalues = qr_shift_ws!(Ak, Bk) # too many iter
+check_accuracy(eigenvalues, ev_true) # bad
+
+eigenvalues = qr_shifted_deflation(A) #46 iteration # approx one per row !
+check_accuracy(eigenvalues, ev_true) # good
