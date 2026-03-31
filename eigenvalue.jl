@@ -8,6 +8,7 @@ function hessenberg_reduction!(A)
 
     v_buf = zeros(T, m)    # Householder vectors
     work_v = zeros(T, m)   # row products (v_tl)
+    work_col = zeros(T, m)   # column products (tr_v)
     
     for k in 1:m-2
         x = @view A[k+1:m, k] # this will modify A, but we don't care
@@ -33,9 +34,10 @@ function hessenberg_reduction!(A)
             # Right multiplication: H = H(I - 2vv')
             # Apply to ALL rows for columns [k+1:m]
             full_trailing = @view A[1:m, k+1:m]
+            tr_v = @view work_col[1:m]
             # full_trailing -= 2 * (full_trailing * v) * v'
-            mul!(v_tl, full_trailing, vk)
-            BLAS.ger!(-T(2.0), v_tl, vk, full_trailing)
+            mul!(tr_v, full_trailing, vk)
+            BLAS.ger!(-T(2.0), tr_v, vk, full_trailing)
             
             A[k+1, k] = -s * nx
             A[k+2:m, k] .= 0
@@ -171,7 +173,7 @@ function inverse_iteration(A, v, μ ; tol=1e-4, maxiter=100)
         copyto!(v_prev, v)
 
         # solve (A - μI)w = v
-        ldiv!(w,F,v)
+        ldiv!(w,F,v_prev)
         
         # Update and Normalize
         nw = norm(w)
@@ -207,25 +209,44 @@ eigvals(A)
 
 # Rayleigh quotient iteration
 
-function rqi(A, v; tol=1e-4, maxiter=100)
-    v = copy(v) 
-    normalize!(v)
+function rqi!(A, v, μ ; tol=1e-4, maxiter=100)
+    T = eltype(A)
+    m = size(A, 1)
     
-    λ = dot(v, A, v)
+    w = zeros(T, m)
+    v_prev = zeros(T, m)
+    
+    normalize!(v)
+    λ = T(μ)
+
+    A_shifted = A - λ*I
+    F = lu!(A_shifted)
     
     for k in 1:maxiter
+        copyto!(v_prev, v)
+
         # solve (A - μI)w = v
-        v = (A - λ*I) \ v
-        normalize!(v)
-        λ_new = dot(v, A, v)  # Rayleigh quotient: v' * A * v
+        ldiv!(w,F,v_prev)
+        
+        # Update and Normalize
+        nw = norm(w)
+        v .= w ./ nw
+        
+        dot_product = dot(v, v_prev) # Rayleigh quotient: v' * A * v
+        λ += dot_product / nw
         
         # Check convergence
-        residual = norm(A*v - λ_new*v)
+        w .= (v_prev .- dot_product .* v) ./ nw
+        residual = norm(w)
+
         if residual < tol
-            println("Converged in $k iterations")
-            return v, λ_new
+            println(k)
+            return v, λ
         end        
-        λ = λ_new
+        λ = λ
+        A_shifted .= A - λ*I
+        F = lu!(A_shifted) # O(n³)
+
     end
     println("hit max iterations")
     return v, λ
@@ -234,10 +255,14 @@ end
 n = 10
 X = randn(n, n)
 A = X + X'
-v = randn(n, 1)
+v = randn(n)
+μ = 50
 
 v, λ = inverse_iteration(A,v,3, tol = 1e-12) # 80 iteration
-v, λ = rqi(A, v, tol = 1e-12) # 1 iteration !
+v, λ = rqi!(A, v, μ, tol = 1e-12) # 5 iteration !
+
+v = randn(n)
+@time rqi!(A, v, μ, tol = 1e-12)
 
 eigvals(A)
 
@@ -245,46 +270,68 @@ eigvals(A)
 
 function qr_eigen(A; tol = 1e-6, maxiter = 500)
     Ak = copy(A)
-
+    Bk = similar(Ak)
+    F = qr!(Ak) # QR factorization of A
+    mul!(Bk, F.R , F.Q)
+    
     for k in 1:maxiter
-        F = qr(Ak) # QR factorization of A
-        Ak = F.R * F.Q
         if norm(tril(Ak, -1)) < tol # elements below the diagonal
             println("Converged in $k iterations")
             return diag(Ak)
-        end    
+        end
+        F = qr!(Ak) # QR factorization of A
+        mul!(Bk, F.R , F.Q)
+        Ak .= Bk
     end
     println("hit max iterations")
     return diag(Ak)
 end
 
-n = 10
+n = 100
 X = randn(n, n)
 A = X + X'
-v = randn(n, 1)
 
 eigvals(A)
-eigenvalues = qr_eigen(A) # stopped at 458, but with excellent accuracy
+eigenvalues = qr_eigen(A) # stopped at maxiter
 
-function qr_shift_rqs(A; tol = 1e-6, maxiter = 500)
-    Ak = copy(A)
+@time qr_eigen(A)
+
+function qr_shift_rqs!(A, Bk; tol = 1e-6, maxiter = 500)
     m = size(A,1)
     
     for k in 1:maxiter
-        μ = Ak[m,m] # rayleigh quotient shift: q*Aq = t(q)
-        F = qr(Ak - μ*I) # QR factorization of A - μI
-        Ak = F.R * F.Q + μ*I # we still have Ak = Q* Ak-1 Q
 
-        if norm(tril(Ak, -1)) < tol # elements below the diagonal
+        off_diag_norm = 0.0
+        for j in 1:m-1, i in j+1:m
+            off_diag_norm += abs2(A[i, j]) # all elements below the diagonal
+        end
+
+        if sqrt(off_diag_norm) < tol 
             println("Converged in $k iterations")
-            return diag(Ak)
-        end    
+            return diag(A)
+        end
+
+        μ = A[m,m] # rayleigh quotient shift: q*Aq = t(q)
+        for i in 1:m
+            A[i, i] -= μ
+        end
+        F = qr!(A) # QR factorization of A - μI
+        mul!(Bk, F.R , F.Q)
+        A .= Bk 
+        for i in 1:m
+            A[i, i] += μ
+        end # we still have A = Q* A-1 Q
     end
     println("hit max iterations")
-    return diag(Ak)
+    return diag(A)
 end
 
-eigenvalues = qr_shift_rqs(A) # either converged in #100 iterations, or get stuck
+Ak = copy(A)
+Bk = similar(Ak)
+eigenvalues = qr_shift_rqs!(Ak, Bk) # either converged in #100 iterations, or get stuck
+Ak = copy(A)
+Bk = similar(Ak)
+@time qr_shift_rqs!(Ak, Bk)
 
 function qr_shift_ws(A; tol = 1e-6, maxiter = 500)
     Ak = copy(A)
