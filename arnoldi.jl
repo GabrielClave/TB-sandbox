@@ -35,17 +35,6 @@ function arnoldi!(A, b, Q, H; maxiter = 50, tol = 1e-12)
     return maxiter
 end
 
-m = 100
-A = randn(m, m)
-b = randn(m, 1)
-
-Q, H, n = arnoldi(A,b)
-# Check if Q is orthonormal
-println("norm(Q'*Q - I): ", norm(Q'*Q - I(size(Q,2))))
-
-# check if AQn = Qn+1H
-println("norm(AQn - Qn+1H): ", norm(A*Q[:,1:n-1] - Q*H))
-
 m = 300
 max_k = 50
 A = randn(m, m)
@@ -63,7 +52,6 @@ H_final = H[1:num_iters+1, 1:num_iters]
 println("Orthonormality check: ", norm(Q_final' * Q_final - I))
 
 @time num_iters = arnoldi!(A, b, Q, H, maxiter=max_k) # 50 allocations in kB
-@time Q_created, H_created, n = arnoldi(A,b) # 10,000 allocations in MB
 
 H_n = @view H[1:num_iters,1:num_iters]
 

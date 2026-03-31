@@ -65,11 +65,22 @@ function incremental_gmres!(A, b, Q, H, x; maxiter = 50, tol = 1e-12)
     H_k = @view H[1:maxiter, 1:maxiter]
     y = UpperTriangular(H_k) \ g[1:maxiter]
     mul!(x, view(Q, :, 1:maxiter), y)
+    residual = abs(g[maxiter])
     println("hit $maxiter iterations. Residual: $residual")
     return maxiter
 end
 
+m = 300
 x = zeros(m)
+max_k = 50
+
+A = randn(m, m)/sqrt(m) + 5I # Diagonally dominant matrix, eigenvalues are clustered far from 0
+b = randn(m)
+x_true = A \ b
+
+T = promote_type(eltype(A), eltype(b))
+Q = zeros(T, m, max_k + 1)
+H = zeros(T, max_k + 1, max_k)
 
 k = incremental_gmres!(A,b,Q,H,x) # 19 steps
 

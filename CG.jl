@@ -61,7 +61,7 @@ end
 m = 300
 max_k = 100
 X = randn(m, m)
-A = X'*X
+A = Symmetric(X'*X)
 b = randn(m)
 
 x_true = A \ b
@@ -73,14 +73,14 @@ alpha = zeros(max_k)
 beta_sub = zeros(max_k - 1)
 T_mat = SymTridiagonal(alpha, beta_sub)
 
-n = cg!(A, b, x, P, T_mat, maxiter=max_k)
+n = cg!(A, b, x, P, T_mat; maxiter=max_k)
 # awful, 100 iterations
 
 # good matrix
 m = 300
 max_k = 100
 X = randn(m, m)/sqrt(m)
-A = X'*X + 5I
+A = Symmetric(X'*X + 5I) 
 A[1,1] = 12
 b = randn(m)
 
